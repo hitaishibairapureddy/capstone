@@ -1,0 +1,926 @@
+---
+title: "Capstone Project"
+author: "Hitaishi Bairapureddy"
+date: "2024-06-14"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+
+# Summary of Analysis
+ This capstone project focuses on developing predictive models for health insurance charges using regression analysis techniques. By employing methods like Linear Regression and Decision Tree Regression, the project aims to enhance risk assessment, premium pricing, and decision-making in the insurance sector. Key steps include data preparation, exploratory data analysis (EDA), feature selection, model building, and evaluation. The final models are evaluated based on metrics like RMSE, R-squared, and MAE, with results indicating a strong relationship between selected features and insurance charges.
+
+
+
+### Data Loading and Analysis
+```{r}
+insur_data <- read.csv("C:\\Users\\bhita\\OneDrive\\Documents\\hithu\\Summer Capstone\\insurance data.csv")
+head(insur_data)
+```
+
+### Data Preparation and Processing
+```{r}
+dim(insur_data)
+summary(insur_data)
+```
+
+```{r}
+# Checking for missing values
+sum(is.na(insur_data))
+```
+
+```{r}
+# Summarizing missing values by column
+colSums(is.na(insur_data))
+```
+
+
+#### K-NN imputation 
+```{r}
+library(VIM)
+insurance_data <- kNN(insur_data, variable=c("age", "bmi", "children", "Claim_Amount", "past_consultations", "num_of_steps", "Hospital_expenditure", "NUmber_of_past_hospitalizations", "Anual_Salary"), k=5)
+colMeans(is.na(insurance_data))
+```
+
+```{r}
+insur.data <- insurance_data[, !grepl("_imp", colnames(insurance_data))]
+
+# Checking the structure of the cleaned data
+str(insur.data)
+```
+
+
+
+```{r}
+dim(insur.data)
+```
+After removing the missing values data size has been reduced to 9618 from 10008.
+
+
+#### Dealing with Outliers
+```{r}
+boxplot(insur.data$charges)
+
+```
+
+
+```{r}
+boxplot(insur.data$age)
+boxplot(insur.data$past_consultations)
+boxplot(insur.data$num_of_steps)
+boxplot(insur.data$bmi)
+boxplot(insur.data$Hospital_expenditure)
+boxplot(insur.data$NUmber_of_past_hospitalizations)
+boxplot(insur.data$children)
+boxplot(insur.data$Claim_Amount)
+boxplot(insur.data$Anual_Salary)
+```
+
+```{r}
+idata2 <- insur.data[ , -(which(colnames(insur.data) == "Anual_Salary"))]
+summary(idata2)
+
+```
+
+
+
+
+#### Converting Categorical to Factor
+```{r}
+library(dplyr)
+# Loading necessary libraries
+library(tidyverse)
+
+
+# Converting categorical variables to factors and then to numeric codes
+insurance_data4 <- idata2 %>%
+  mutate(across(where(is.character), as.factor)) %>%
+  mutate(across(where(is.factor), as.integer))
+
+# Checking the structure of the modified dataframe
+str(insurance_data4)
+
+```
+
+
+
+```{r}
+summary(insurance_data4)
+```
+```{r}
+# Loading necessary libraries
+library(dplyr)
+
+# Defining the function to remove outliers using the IQR method
+remove_outliers <- function(data, exclude_cols) {
+  # Creating a copy of the data
+  data_clean <- data
+  
+  # Calculating Q1 (25th percentile) and Q3 (75th percentile) for each column
+  for(col in colnames(data)) {
+    if(!(col %in% exclude_cols)) {
+      Q1 <- quantile(data[[col]], probs = 0.25, na.rm = TRUE)
+      Q3 <- quantile(data[[col]], probs = 0.75, na.rm = TRUE)
+      IQR <- Q3 - Q1
+      
+      # Defining the lower and upper bounds for outliers
+      lower_bound <- Q1 - 1.5 * IQR
+      upper_bound <- Q3 + 1.5 * IQR
+      
+      # Removing outliers
+      data_clean <- data_clean[data_clean[[col]] >= lower_bound & data_clean[[col]] <= upper_bound, ]
+    }
+  }
+  
+  return(data_clean)
+}
+
+# Defining the columns to exclude from outlier removal
+exclude_columns <- c("smoker", "NUmber_of_past_hospitalizations")
+
+# Removing outliers from insurance_data4
+insur_data5 <- remove_outliers(insurance_data4, exclude_columns)
+
+# Checking the cleaned data
+summary(insur_data5)
+
+
+```
+
+```{r}
+dim(insur_data5)
+```
+
+
+## Exploratory Data Analysis
+
+### Univariate Analysis
+
+#### Distribution of Target Variable
+```{r}
+hist(insurance_data4$charges)
+```
+
+The distribution of target variable is not symmetric and slightly skewed to the right.
+
+
+```{r}
+library(dplyr)
+# Histograms and box plots
+insurance_data4 %>%
+  gather() %>%
+  ggplot(aes(value)) +
+  geom_histogram(bins=30) +
+  facet_wrap(~key, scales='free_x')
+
+# Summary statistics
+summary(insurance_data4)
+
+```
+
+### Bivariate Analysis
+
+#### Average Insurance Charges by Region
+```{r}
+# Loading necessary libraries
+library(tidyverse)
+
+
+# Converting region to factor
+insurance_data4 <- idata2 %>%
+  mutate(region = as.factor(region))
+
+# Calculating average charges by region
+average_charges_by_region <- idata2 %>%
+  group_by(region) %>%
+  summarise(average_charges = mean(charges, na.rm = TRUE)) %>%
+  arrange(desc(average_charges))
+
+# Defining a list of colors for each bar
+colors <- c('skyblue', 'orange', 'green', 'red')
+
+# Creating the bar plot using ggplot2
+ggplot(average_charges_by_region, aes(x = reorder(region, -average_charges), y = average_charges, fill = region)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = colors) +
+  labs(x = "Region", y = "Average Insurance Charges", title = "Average Insurance Charges by Region") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+```
+
+Interpretation:
+Analyzing insurance charges across four regions in the US reveals the South East region as the most expensive, with an average cost of $11,750. Following closely behind is the North East at $11,500. The North West region offers a slight decrease at $11,250, while the South West boasts the most affordable insurance with an average of $11,000.
+
+
+#### Analysis of Insurance Charges by number of Children
+
+```{r}
+# Creating the violin plot using ggplot2
+ggplot(idata2, aes(x = factor(children), y = charges)) +
+  geom_violin(trim = FALSE) +
+  stat_summary(fun = "median", geom = "point", color = "red", size = 2) +
+  labs(x = "Number of Children", y = "Insurance Charges", title = "Insurance Charges by Number of Children") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+Interpretation: 
+Based on the chart, it appears that people with more children tend to have higher insurance charges. This could be because:
+•	There are more people to cover under the insurance plan, increasing the overall cost.
+•	Children may require more medical care, leading to higher healthcare costs for the family.
+
+
+
+#### Age Wise trend in Insurance Charges
+```{r}
+# Calculating average charges by age
+average_charges_by_age <- idata2 %>%
+  group_by(age) %>%
+  summarise(average_charges = mean(charges, na.rm = TRUE))
+# Creating the line plot using ggplot2
+ggplot(average_charges_by_age, aes(x = age, y = average_charges)) +
+  geom_line() +
+  geom_point() +
+  labs(x = "Age", y = "Average Insurance Charges", title = "Trend Analysis- Age vs Insurance Charges") +
+  theme_minimal()
+
+
+```
+
+
+
+
+#### BMI vs Charges
+```{r}
+# Creating the scatter plot using ggplot2
+ggplot(idata2, aes(x = bmi, y = charges)) +
+  geom_point(alpha = 0.5) +
+  labs(x = "BMI", y = "Charges", title = "BMI vs Charges") +
+  theme_minimal()
+
+```
+
+Interpretation:
+Examining insurance premiums by age indicates a distinct and predictable pattern: insurance costs generally rise with age. This finding corresponds with the increased health risks and medical requirements as individuals age.
+
+
+
+
+#### Insurance Charges by Number of Hospitalizations
+```{r}
+# Calculating average charges by number of past hospitalizations
+average_charges_by_hospitalizations <- idata2 %>%
+  group_by(NUmber_of_past_hospitalizations) %>%
+  summarise(average_charges = mean(charges, na.rm = TRUE))
+
+# Creating the bar plot using ggplot2
+ggplot(average_charges_by_hospitalizations, aes(x = factor(NUmber_of_past_hospitalizations), y = average_charges)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  labs(x = "Number of Past Hospitalizations", y = "Average Insurance Charges", title = "Insurance Charges by Number of Hospitalizations") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+Interpretation:
+The analysis reveals that insurance charges tend to rise with an increasing number of hospitalizations. As individuals experience more hospitalizations, their insurance costs also increase accordingly.
+
+
+
+#### Insurance Charges by Gender
+```{r}
+
+# Creating the box plot using ggplot2
+ggplot(idata2, aes(x = sex, y = charges)) +
+  geom_boxplot() +
+  labs(x = "Gender", y = "Insurance Charges", title = "Insurance Charges by Gender") +
+  theme_minimal()
+
+```
+
+The "Insurance Charges by Gender" boxplot reveals a trend of potentially higher charges for females. The median charge for females sits higher than males, and the wider spread in the female box suggests greater variability in their costs. This difference could be due to factors like pregnancy-related care or historical cost structures, but it's important to remember that individual charges depend on various health factors, not just gender.
+
+
+
+#### Density Plots
+```{r}
+# Loading necessary libraries
+library(tidyverse)
+library(patchwork)
+
+# Defining the columns to plot
+cols <- c("age", "bmi", "charges", "children", "Claim_Amount", "past_consultations", 
+          "num_of_steps", "Hospital_expenditure", "NUmber_of_past_hospitalizations")
+
+# Creating a list to store individual plots
+plot_list <- list()
+
+# Looping through each column and create a KDE plot
+for (col in cols) {
+  p <- ggplot(idata2, aes_string(x = col, color = "sex")) +
+    geom_density() +
+    labs(x = "", y = "Density", title = col) +
+    theme_minimal()
+  plot_list[[length(plot_list) + 1]] <- p
+}
+
+# Combining all plots into a grid layout
+combined_plot <- wrap_plots(plot_list, ncol = 3)
+
+# Displaying the combined plot
+print(combined_plot)
+
+```
+
+```{r}
+
+# Setting up the plot canvas
+plot_grid <- matrix(seq(1, 12), nrow = 4, ncol = 3, byrow = TRUE)
+
+# Initializing an empty list to store ggplot objects
+plot_list <- list()
+
+# Creating plots for each column
+for (i in seq_along(cols)) {
+  # Plot KDE with ggplot2
+  plot <- ggplot(idata2, aes_string(x = cols[i], fill = "smoker")) +
+    geom_density(alpha = 0.5) +
+    labs(title = cols[i], x = "", y = "Density") +
+    theme_minimal()
+
+  # Adding plot to list
+  plot_list[[i]] <- plot
+}
+
+# Combining plots into a grid
+multiplot <- cowplot::plot_grid(plotlist = plot_list, nrow = 4, ncol = 3)
+
+# Printing the grid of plots
+print(multiplot)
+
+```
+
+
+```{r}
+# Loading required packages
+library(ggplot2)
+library(dplyr)
+library(cowplot) 
+
+# Initializing an empty list to store ggplot objects
+plot_list <- list()
+
+# Creating plots for each column
+for (col in cols) {
+  # Plotting KDE with ggplot2
+  p <- ggplot(idata2, aes_string(x = col, color = "region", fill = "region")) +
+    geom_density(alpha = 0.5) +
+    labs(title = col, x = "", y = "Density") +
+    theme_minimal() +
+    theme(plot.title = element_text(size = 10))
+  
+  # Adding plot to list
+  plot_list[[length(plot_list) + 1]] <- p
+}
+
+# Combining plots into a grid
+multiplot <- plot_grid(plotlist = plot_list, nrow = 4, ncol = 3)
+
+# Printing the grid of plots
+print(multiplot)
+
+```
+
+
+
+
+### Multivariate Analysis
+
+#### Insurance Charges by Gender and Smoking Status
+```{r}
+
+# Calculating average charges by gender and smoking status
+charges_by_gender_smoker <- idata2 %>%
+  group_by(sex, smoker) %>%
+  summarise(average_charges = mean(charges, na.rm = TRUE), .groups = 'drop')
+
+# Creating the stacked bar plot using ggplot2
+ggplot(charges_by_gender_smoker, aes(x = sex, y = average_charges, fill = smoker)) +
+  geom_bar(stat = "identity") +
+  labs(x = "Gender", y = "Average Insurance Charges", title = "Insurance Charges by Gender and Smoking Status") +
+  scale_fill_manual(values = c("no" = "skyblue", "yes" = "salmon"), name = "Smoker") +
+  theme_minimal()
+ 
+
+```
+
+
+While non-smokers of both genders benefit from lower insurance costs, a curious trend emerges for smokers. Interestingly, women who smoke appear to have lower insurance premiums compared to men who smoke. This suggests that although smoking typically increases insurance costs, there might be gender-specific factors influencing how these costs are calculated.
+
+
+
+```{r}
+library(dplyr)
+# Loading necessary libraries
+library(tidyverse)
+
+
+# Converting categorical variables to factors and then to numeric codes
+insurance_data6 <- insur_data5 %>%
+  mutate(across(where(is.character), as.factor)) %>%
+  mutate(across(where(is.factor), as.integer))
+
+# Checking the structure of the modified dataframe
+str(insurance_data6)
+```
+
+
+```{r}
+summary(insurance_data6)
+```
+
+#### Correlation Matrix
+```{r}
+# Calculating the correlation matrix, ensuring all are numeric
+cor_matrix <- cor(insurance_data6, use = "pairwise.complete.obs")
+
+# Loading library for plotting
+library(corrplot)
+
+# Plotting the correlation matrix
+corrplot(cor_matrix, method = "color")
+```
+
+•	Charges are highly positively correlated with Hospital_expenditure and Claim_Amount.
+•	Smoker status shows a strong positive correlation with charges and Claim_Amount.
+•	BMI has a moderate positive correlation with charges and hospital expenditure.
+•	Number of past hospitalizations is positively correlated with hospital expenditure and past consultations
+
+
+
+
+### Feature Selection
+
+
+#### ANOVA
+```{r}
+# Performing ANOVA to select features
+anova_results <- anova(lm(charges ~ ., data = insurance_data6))
+
+print(anova_results)
+```
+From Analysis of variance results, it seems all the variables are significant.
+
+```{r}
+sum(is.na(insurance_data6))
+
+```
+
+### Principal Component Analysis
+```{r}
+# Loading necessary libraries
+library(dplyr)
+
+# Defining the function to remove constant columns
+remove_constant_columns <- function(data) {
+  data_clean <- data[, sapply(data, function(col) var(col, na.rm = TRUE) > 0)]
+  return(data_clean)
+}
+
+
+
+# Removing constant columns from insurance_data6
+insurance_data6_clean <- remove_constant_columns(insurance_data6)
+
+# Checking the cleaned data
+summary(insurance_data6_clean)
+
+# Performing PCA on the cleaned data
+pca_result <- prcomp(insurance_data6_clean, scale. = TRUE, center = TRUE)
+
+# Summarizing the PCA results
+summary(pca_result)
+
+```
+
+#### Scree Plot
+```{r}
+# Visualizing the variance explained by the principal components
+library(factoextra)
+fviz_eig(pca_result)
+```
+
+From the Scree plot, it says that the first two principal components are responsible for most of the variation.
+
+
+
+#### PCA Biplot
+```{r}
+#Visualizing PCA biplot
+fviz_pca_var(pca_result, col.var = "contrib",
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07")
+             )
+```
+
+From PCA Biplot, the selected features are past_consultations, Hospital_expenditure, smoker, age, num_of_steps. These are selected from the assumption that features are perpendicular to target variable- charges are avoided and features with strong correlation towards or opposite to target variable are generally selected.
+
+
+#### Selecting the Features
+```{r}
+# List of selected feature names based on PCA biplot correlation with the class
+selected_features <- c("charges", "past_consultations", "Hospital_expenditure", "smoker", "age", "num_of_steps")
+
+
+# Creating a new dataset with only the selected features
+selected_data <- insurance_data6[, selected_features]
+
+# Checking the structure of the new dataset to confirm the features are correctly selected
+str(selected_data)
+```
+#### PCA Biplot after selecting Features
+```{r}
+# Loading necessary libraries
+library(dplyr)
+library(factoextra)
+
+# Defining the function to remove constant columns
+remove_constant_columns <- function(data) {
+  data_clean <- data[, sapply(data, function(col) var(col, na.rm = TRUE) > 0)]
+  return(data_clean)
+}
+
+
+# Removing constant columns from selected_data
+selected_data_clean <- remove_constant_columns(selected_data)
+
+# Checking the cleaned data
+summary(selected_data_clean)
+
+# Performing PCA on the cleaned data
+pca_result1 <- prcomp(selected_data_clean, scale. = TRUE, center = TRUE)
+
+# Summarizing the PCA results
+summary(pca_result1)
+
+# Visualizing PCA variable contributions
+fviz_pca_var(pca_result1, col.var = "contrib",
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"))
+
+```
+
+
+
+#### Pair Metrics
+```{r}
+library(GGally)
+ggpairs(selected_data)
+```
+
+
+#### Normalizing the data
+```{r}
+# Standardizing the data
+norm_data <- scale(selected_data[, -which(names(selected_data) == "charges")])  
+
+
+norm_data <- as.data.frame(norm_data)  # Convert to data frame
+norm_data$charges <- selected_data$charges
+
+head(norm_data)
+```
+
+### Model Building 
+
+#### Data Splitting
+```{r}
+library(caret)
+# Spliting data into training and testing sets
+set.seed(123)  # For reproducibility
+trainIndex <- createDataPartition(norm_data$charges, p = .8, 
+                                  list = FALSE, 
+                                  times = 1)
+insurance_train <- norm_data[trainIndex, ]
+insurance_test  <- norm_data[-trainIndex, ]
+
+```
+
+
+```{r}
+summary(insurance_train)
+```
+
+#### 1. Linear Regression Model
+```{r}
+# Linear Regression Model
+lm_model <- train(charges ~ ., data = insurance_train, method = "lm")
+summary(lm_model)
+
+# Model prediction and evaluation
+lm_predictions <- predict(lm_model, newdata = insurance_test)
+lm_rmse <- RMSE(lm_predictions, insurance_test$charges)
+print(paste("Linear Model RMSE:", lm_rmse))
+
+```
+
+This linear regression model effectively predicts the outcome variable (R-squared: 0.9132) with all independent variables (past consultations, hospital expenditure, smoker status, age, and steps) having a significant impact (p-value < 0.05). While the intercept represents the outcome when all other factors are zero, the coefficients indicate the direction and strength of each variable's influence, with age showing a negative effect. The RMSE of 1567.40 suggests an average difference between predicted and actual outcomes.
+
+
+
+#### Addressing Model Assumptions - Linear Regression
+
+
++ Residuals vs Fitted: This plot checks the linearity assumption.
++ Normal Q-Q: This plot checks the normality of residuals.
++ Scale-Location (or Spread-Location): This plot checks the homoscedasticity assumption.
++ Residuals vs Leverage: This plot identifies influential observations.
+
+```{r}
+# Addressing Model Assumptions for Linear Regression
+
+# Checking lengths of predicted values and residuals
+lm_predictions <- predict(lm_model$finalModel)
+lm_residuals <- residuals(lm_model$finalModel)
+
+# Ensuring the lengths are the same
+if(length(lm_predictions) == length(lm_residuals)) {
+  # Residual plots
+  par(mfrow = c(2, 2))
+  plot(lm_model$finalModel)
+  
+  # Checking for homoscedasticity
+  plot(lm_predictions, lm_residuals, main = "Homoscedasticity Check", xlab = "Predicted values", ylab = "Residuals")
+  
+  # Checking for normality of residuals
+  qqnorm(lm_residuals)
+  qqline(lm_residuals)
+  
+  # Independence of residuals
+  acf(lm_residuals)
+} else {
+  stop("Lengths of predicted values and residuals do not match.")
+}
+
+
+```
+
+1. Residuals vs Fitted
+
+Ideally, the residuals should be randomly scattered around the horizontal line (residuals = 0) with no clear pattern.
+In the plot, the residuals display a curved pattern, which suggests that the linearity assumption may be violated. This indicates that the relationship between the predictors and the response variable may not be purely linear.
+
+2. Normal Q-Q
+
+Ideally, the residuals should fall along the 45-degree reference line.
+In the plot, most residuals fall along the line, but there are deviations at the tails (particularly at the upper end), indicating some departure from normality. This suggests that the residuals may not be perfectly normally distributed, but moderate deviations are usually acceptable.
+
+3. Scale-Location (or Spread-Location)
+
+In the plot, the spread of the standardized residuals increases with the fitted values, suggesting heteroscedasticity (non-constant variance). This means that the variance of the residuals increases as the fitted values increase, which violates the homoscedasticity assumption.
+
+4. Residuals vs Leverage
+
+Points that are far from others horizontally (high leverage) and have large residuals vertically (outliers) can be influential.
+In the plot, a few points are highlighted (e.g., point labeled X38880) with high leverage or high Cook's distance, indicating they are potentially influential. Such points can have a significant impact on the regression model and should be investigated further.
+
+
+Homoscedasticity
+
+In this plot, it appears there is a slight trend upwards as the predicted values increase. This suggests that the variance of the residuals might be increasing with increasing predicted values, violating the assumption of homoscedasticity.
+
+Normality of residuals
+
+If the residuals are normally distributed, the points should fall approximately along a straight diagonal line.
+In this plot, the points deviate from the straight line, particularly for the tails of the distribution. This suggests that the residuals may not be normally distributed.
+
+### 2. Decision Tree Model
+```{r}
+# Loading necessary package
+library(rpart)
+
+# Decision Tree model 
+tree_model <- rpart(charges ~ ., data = insurance_train)
+
+# Summary of the Decision Tree model
+summary(tree_model)
+```
+
+```{r}
+# Loading the necessary library
+library(rpart.plot)
+
+# Plotting the regression tree
+rpart.plot(tree_model, main="Decision Tree Plot", type=4, extra=101)  # Adjust the type and extra for regression tree
+```
+
+From the decision tree analysis in the result, the number of steps is the most critical variable that affects the outcome, followed by hospital expenditure, smoking, age, and the number of past consultations. The first node, with a mean of 8605.064 and an MSE of 2.999775e+07, splits due to the number of steps, so it has a greater effect on the dependent variable. Also, later-in-the-tree splits do indicate that fewer steps, lower hospital expenditures, and not smoking all have lower means. Age and past consultations do play a role, although to a lesser degree. The nodes of this tree clearly indicate that there are different means and MSEs, thus once again coming back to the heterogeneity in the data. In particular, it was found that the lower steps and expenditures are associated with better outcomes, while higher steps and expenditures are associated with higher means, indicating poorer outcomes.
+
+
+
+
+#### Addressing Model Assumptions- Decision Tree
+```{r}
+library(rpart)
+library(rpart.plot)
+library(caret)
+```
+
+```{r}
+# Predicting on the training data
+train_predictions <- predict(tree_model, newdata = insurance_train)
+
+# Predicting on the test data
+test_predictions <- predict(tree_model, newdata = insurance_test)
+
+# Evaluating model performance
+train_mse <- mean((insurance_train$charges - train_predictions)^2)
+train_rmse <- sqrt(train_mse)
+train_r2 <- R2(train_predictions, insurance_train$charges)
+
+test_mse <- mean((insurance_test$charges - test_predictions)^2)
+test_rmse <- sqrt(test_mse)
+test_r2 <- R2(test_predictions, insurance_test$charges)
+
+cat("Training RMSE:", train_rmse, "\n")
+cat("Training R-squared:", train_r2, "\n")
+cat("Test RMSE:", test_rmse, "\n")
+cat("Test R-squared:", test_r2, "\n")
+
+# Plotting residuals
+train_residuals <- insurance_train$charges - train_predictions
+test_residuals <- insurance_test$charges - test_predictions
+
+# Plotting training residuals
+par(mfrow = c(2, 2))
+plot(train_predictions, train_residuals, main = "Training Residuals vs Predicted", 
+     xlab = "Predicted values", ylab = "Residuals")
+abline(h = 0, col = "red")
+
+# Plotting test residuals
+plot(test_predictions, test_residuals, main = "Test Residuals vs Predicted", 
+     xlab = "Predicted values", ylab = "Residuals")
+abline(h = 0, col = "red")
+
+# Histogram of residuals
+hist(train_residuals, main = "Histogram of Training Residuals", 
+     xlab = "Residuals", breaks = 30)
+
+hist(test_residuals, main = "Histogram of Test Residuals", 
+     xlab = "Residuals", breaks = 30)
+```
+
+Training Residuals vs. Predicted and Test Residuals vs. Predicted: These are scatter plots of the predicted values versus the residuals  for the training and test data, respectively. Again, theoretically, if things were ideal—residuals must be randomly scattered around zero with no visible pattern. In other words, this would then confirm that the model's predictions are unbiased across the range of predicted values.
+
+Histogram of training residuals and histogram of test residuals: These graphs estimate the density of the residuals for the training set and the test data set. The ideal shape of the histograms should be at least somewhat symmetric, or even near bell-shaped, in order to suggest that the residuals are at least approximately normally distributed. This would be assumed under linear regression, but it is not the case under decision trees per se. However, this has implications for model interpretability and estimation of confidence intervals.
+
+
+
+
+
+### Cross Validation
+
+```{r}
+library(caret)
+library(rpart)
+
+```
+
+
+```{r}
+# Defining cross-validation method
+train_control <- trainControl(method = "cv", number = 10)  # 10-fold cross-validation
+
+```
+
+#### Cross Validation - Linear Regression
+```{r}
+# Linear Regression Model with cross-validation
+lm_model_cv <- train(charges ~ ., data = insurance_train, method = "lm", trControl = train_control)
+
+# Summary of the Linear Regression model
+print(lm_model_cv)
+
+# Predicting on the test data
+lm_predictions <- predict(lm_model_cv, newdata = insurance_test)
+
+# Evaluating model performance
+lm_rmse <- RMSE(lm_predictions, insurance_test$charges)
+lm_r2 <- R2(lm_predictions, insurance_test$charges)
+
+cat("Linear Regression Model RMSE:", lm_rmse, "\n")
+cat("Linear Regression Model R-squared:", lm_r2, "\n")
+
+```
+
+#### Cross Validation - Decision tree 
+```{r}
+# Decision Tree model for predicting charges with cross-validation
+tree_model_cv <- train(charges ~ ., data = insurance_train, method = "rpart", trControl = train_control)
+
+# Summary of the Decision Tree model
+print(tree_model_cv)
+
+# Predicting on the test data
+tree_predictions <- predict(tree_model_cv, newdata = insurance_test)
+
+# Evaluating model performance
+tree_rmse <- RMSE(tree_predictions, insurance_test$charges)
+tree_r2 <- R2(tree_predictions, insurance_test$charges)
+
+cat("Decision Tree Model RMSE:", tree_rmse, "\n")
+cat("Decision Tree Model R-squared:", tree_r2, "\n")
+
+```
+
+
+Linear Regression Model
+Cross-Validation RMSE: 1614.438
+Cross-Validation R-squared: 0.9135376
+Test RMSE: 1567.4
+Test R-squared: 0.9172124
+Decision Tree Model
+Cross-Validation RMSE: 1995.027 (for the best cp value)
+Cross-Validation R-squared: 0.8637927 (for the best cp value)
+Test RMSE: 2362.393
+Test R-squared: 0.8115849
+Comparison
+RMSE: The linear regression model produced an RMSE of 1614.438 for cross-validation and 1567.4 for the test set, while for the decision tree model, this was 1995.027 for cross-validation and 2362.393 for the test set. This gives a lower RMSE for the Linear Regression model, hence indicating that it has, on average, a smaller prediction error.
+R-squared value in the case of a Linear Regression model is greater, 0.9135376 for Cross-Validation and 0.9172124 for test set, against that produced by decision tree model, 0.8637927 for Cross-Validation and 0.8115849 for test set. The linear regression model has a higher R-squared value, indicating that it explains a greater proportion of variance in the target variable.
+
+
+#### Conclusion:
+Linear regression model is found to be more effective than decision tree model in predicting insurance charges with low RMSE and high R - squared value.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+`
+
